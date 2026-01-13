@@ -42,8 +42,8 @@ Thumbs.db
 .coverage
 htmlcov/
 
-# uv
-uv.lock
+# uv cache
+.uv_cache/
 
 # Local env files
 .env
