@@ -83,9 +83,13 @@ jobs:
           cp uv.lock bundle/
           cp -r scripts bundle/
 
+          # Debug: show what's in bundle
+          echo "Contents of bundle:"
+          ls -laR bundle/
+
           # Create archive with correct naming: {platform}.{arch}.{name}.tar.gz
           cd bundle
-          tar -czvf ${{ matrix.platform }}.${{ matrix.arch }}.gcs-public-share.tar.gz *
+          tar -czvf ${{ matrix.platform }}.${{ matrix.arch }}.gcs-public-share.tar.gz src scripts gemini-extension.json GEMINI.md pyproject.toml requirements.txt uv.lock
 
       - name: Upload platform bundle
         uses: actions/upload-artifact@v4
