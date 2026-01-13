@@ -70,71 +70,28 @@ jobs:
         run: |
           uv sync --frozen
 
-      - name: Get version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          fi
-
       - name: Create bundle
         run: |
-          mkdir -p bundle/gcs-public-share
-          cp -r src bundle/gcs-public-share/
-          cp gemini-extension.json bundle/gcs-public-share/
-          cp GEMINI.md bundle/gcs-public-share/
-          cp pyproject.toml bundle/gcs-public-share/
-          cp requirements.txt bundle/gcs-public-share/
-          cp uv.lock bundle/gcs-public-share/
-          cp -r scripts bundle/gcs-public-share/
+          mkdir -p bundle
 
-          # Create install instructions
-          cat > bundle/gcs-public-share/INSTALL.md << 'EOF'
-          # Installation Instructions
+          # Copy files directly to bundle (gemini-extension.json at root)
+          cp -r src bundle/
+          cp gemini-extension.json bundle/
+          cp GEMINI.md bundle/
+          cp pyproject.toml bundle/
+          cp requirements.txt bundle/
+          cp uv.lock bundle/
+          cp -r scripts bundle/
 
-          ## Prerequisites
-          - Python 3.10 or higher
-          - Google Cloud SDK (gcloud) - https://cloud.google.com/sdk/docs/install
-          - Gemini CLI
-
-          ## Installation Steps
-
-          1. Extract this bundle to a directory of your choice
-
-          2. Install Python dependencies:
-             ```bash
-             cd gcs-public-share
-             pip install -r requirements.txt
-             # Or with uv:
-             uv sync
-             ```
-
-          3. Link the extension to Gemini CLI:
-             ```bash
-             gemini extensions link /path/to/gcs-public-share
-             ```
-
-          4. Authenticate with Google Cloud:
-             ```bash
-             gcloud auth login
-             gcloud auth application-default login
-             ```
-
-          5. Restart Gemini CLI and try:
-             - "Share this file publicly"
-             - "List my GCS buckets"
-          EOF
-
+          # Create archive with correct naming: {platform}.{arch}.{name}.tar.gz
           cd bundle
-          tar -czvf gcs-public-share-${{ steps.version.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz gcs-public-share
+          tar -czvf ${{ matrix.platform }}.${{ matrix.arch }}.gcs-public-share.tar.gz *
 
       - name: Upload platform bundle
         uses: actions/upload-artifact@v4
         with:
           name: bundle-${{ matrix.platform }}-${{ matrix.arch }}
-          path: bundle/*.tar.gz
+          path: bundle/${{ matrix.platform }}.${{ matrix.arch }}.gcs-public-share.tar.gz
 
   upload-release-assets:
     name: Upload release assets
@@ -148,7 +105,7 @@ jobs:
           path: artifacts/
 
       - name: Display structure of downloaded files
-        run: ls -la artifacts/
+        run: ls -laR artifacts/
 
       - name: Upload assets to release
         uses: softprops/action-gh-release@v2
