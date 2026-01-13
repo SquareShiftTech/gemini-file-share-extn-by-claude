@@ -1,0 +1,247 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Build wheel and sdist
+        run: |
+          uv build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-packages
+          path: dist/
+
+  create-platform-bundles:
+    name: Create platform bundles
+    needs: build
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+          - os: macos-latest
+            platform: macos
+            arch: arm64
+          - os: macos-13
+            platform: macos
+            arch: x64
+          - os: windows-latest
+            platform: windows
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Create virtual environment and install dependencies
+        run: |
+          uv sync --frozen
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create bundle (Unix)
+        if: matrix.platform != 'windows'
+        run: |
+          mkdir -p bundle/gcs-public-share
+          cp -r src bundle/gcs-public-share/
+          cp gemini-extension.json bundle/gcs-public-share/
+          cp GEMINI.md bundle/gcs-public-share/
+          cp pyproject.toml bundle/gcs-public-share/
+          cp requirements.txt bundle/gcs-public-share/
+          cp -r scripts bundle/gcs-public-share/
+
+          # Create install instructions
+          cat > bundle/gcs-public-share/INSTALL.md << 'EOF'
+          # Installation Instructions
+
+          ## Prerequisites
+          - Python 3.10 or higher
+          - Google Cloud SDK (gcloud) - https://cloud.google.com/sdk/docs/install
+          - Gemini CLI
+
+          ## Installation Steps
+
+          1. Extract this bundle to a directory of your choice
+
+          2. Install Python dependencies:
+             ```bash
+             cd gcs-public-share
+             pip install -r requirements.txt
+             # Or with uv:
+             uv sync
+             ```
+
+          3. Link the extension to Gemini CLI:
+             ```bash
+             gemini extensions link /path/to/gcs-public-share
+             ```
+
+          4. Authenticate with Google Cloud:
+             ```bash
+             gcloud auth login
+             gcloud auth application-default login
+             ```
+
+          5. Restart Gemini CLI and try:
+             - "Share this file publicly"
+             - "List my GCS buckets"
+          EOF
+
+          cd bundle
+          tar -czvf gcs-public-share-${{ steps.version.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz gcs-public-share
+
+      - name: Create bundle (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bundle/gcs-public-share
+          Copy-Item -Recurse src bundle/gcs-public-share/
+          Copy-Item gemini-extension.json bundle/gcs-public-share/
+          Copy-Item GEMINI.md bundle/gcs-public-share/
+          Copy-Item pyproject.toml bundle/gcs-public-share/
+          Copy-Item requirements.txt bundle/gcs-public-share/
+          Copy-Item -Recurse scripts bundle/gcs-public-share/
+
+          # Create install instructions
+          @"
+          # Installation Instructions
+
+          ## Prerequisites
+          - Python 3.10 or higher
+          - Google Cloud SDK (gcloud) - https://cloud.google.com/sdk/docs/install
+          - Gemini CLI
+
+          ## Installation Steps
+
+          1. Extract this bundle to a directory of your choice
+
+          2. Install Python dependencies:
+             ```powershell
+             cd gcs-public-share
+             pip install -r requirements.txt
+             # Or with uv:
+             uv sync
+             ```
+
+          3. Link the extension to Gemini CLI:
+             ```powershell
+             gemini extensions link C:\path\to\gcs-public-share
+             ```
+
+          4. Authenticate with Google Cloud:
+             ```powershell
+             gcloud auth login
+             gcloud auth application-default login
+             ```
+
+          5. Restart Gemini CLI and try:
+             - "Share this file publicly"
+             - "List my GCS buckets"
+          "@ | Out-File -FilePath bundle/gcs-public-share/INSTALL.md -Encoding utf8
+
+          Compress-Archive -Path bundle/gcs-public-share -DestinationPath bundle/gcs-public-share-${{ steps.version.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.zip
+
+      - name: Upload platform bundle (Unix)
+        if: matrix.platform != 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.platform }}-${{ matrix.arch }}
+          path: bundle/*.tar.gz
+
+      - name: Upload platform bundle (Windows)
+        if: matrix.platform == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.platform }}-${{ matrix.arch }}
+          path: bundle/*.zip
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/gcs-public-share
+    permissions:
+      id-token: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-packages
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+  upload-release-assets:
+    name: Upload release assets
+    needs: [build, create-platform-bundles]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Display structure of downloaded files
+        run: ls -la artifacts/
+
+      - name: Upload assets to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/python-packages/*
+            artifacts/bundle-*/*

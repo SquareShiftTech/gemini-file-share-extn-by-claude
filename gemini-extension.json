@@ -1,0 +1,15 @@
+{
+  "name": "gcs-public-share",
+  "version": "1.0.0",
+  "description": "Share files publicly via Google Cloud Storage",
+  "mcpServers": {
+    "gcs-share": {
+      "command": "uv",
+      "args": ["run", "--directory", "${extensionPath}", "python", "-m", "src.server"],
+      "env": {
+        "PYTHONPATH": "${extensionPath}"
+      }
+    }
+  },
+  "contextFileName": "GEMINI.md"
+}
