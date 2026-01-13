@@ -44,22 +44,14 @@ jobs:
   create-platform-bundles:
     name: Create platform bundles
     needs: build
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            platform: linux
+          - platform: linux
             arch: x64
-          - os: macos-latest
-            platform: macos
+          - platform: darwin
             arch: arm64
-          - os: macos-15-large
-            platform: macos
-            arch: x64
-          - os: windows-latest
-            platform: windows
-            arch: x64
-    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -80,7 +72,6 @@ jobs:
 
       - name: Get version
         id: version
-        shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
@@ -88,8 +79,7 @@ jobs:
             echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create bundle (Unix)
-        if: matrix.platform != 'windows'
+      - name: Create bundle
         run: |
           mkdir -p bundle/gcs-public-share
           cp -r src bundle/gcs-public-share/
@@ -97,6 +87,7 @@ jobs:
           cp GEMINI.md bundle/gcs-public-share/
           cp pyproject.toml bundle/gcs-public-share/
           cp requirements.txt bundle/gcs-public-share/
+          cp uv.lock bundle/gcs-public-share/
           cp -r scripts bundle/gcs-public-share/
 
           # Create install instructions
@@ -139,70 +130,11 @@ jobs:
           cd bundle
           tar -czvf gcs-public-share-${{ steps.version.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz gcs-public-share
 
-      - name: Create bundle (Windows)
-        if: matrix.platform == 'windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path bundle/gcs-public-share
-          Copy-Item -Recurse src bundle/gcs-public-share/
-          Copy-Item gemini-extension.json bundle/gcs-public-share/
-          Copy-Item GEMINI.md bundle/gcs-public-share/
-          Copy-Item pyproject.toml bundle/gcs-public-share/
-          Copy-Item requirements.txt bundle/gcs-public-share/
-          Copy-Item -Recurse scripts bundle/gcs-public-share/
-
-          # Create install instructions
-          @"
-          # Installation Instructions
-
-          ## Prerequisites
-          - Python 3.10 or higher
-          - Google Cloud SDK (gcloud) - https://cloud.google.com/sdk/docs/install
-          - Gemini CLI
-
-          ## Installation Steps
-
-          1. Extract this bundle to a directory of your choice
-
-          2. Install Python dependencies:
-             ```powershell
-             cd gcs-public-share
-             pip install -r requirements.txt
-             # Or with uv:
-             uv sync
-             ```
-
-          3. Link the extension to Gemini CLI:
-             ```powershell
-             gemini extensions link C:\path\to\gcs-public-share
-             ```
-
-          4. Authenticate with Google Cloud:
-             ```powershell
-             gcloud auth login
-             gcloud auth application-default login
-             ```
-
-          5. Restart Gemini CLI and try:
-             - "Share this file publicly"
-             - "List my GCS buckets"
-          "@ | Out-File -FilePath bundle/gcs-public-share/INSTALL.md -Encoding utf8
-
-          Compress-Archive -Path bundle/gcs-public-share -DestinationPath bundle/gcs-public-share-${{ steps.version.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}.zip
-
-      - name: Upload platform bundle (Unix)
-        if: matrix.platform != 'windows'
+      - name: Upload platform bundle
         uses: actions/upload-artifact@v4
         with:
           name: bundle-${{ matrix.platform }}-${{ matrix.arch }}
           path: bundle/*.tar.gz
-
-      - name: Upload platform bundle (Windows)
-        if: matrix.platform == 'windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: bundle-${{ matrix.platform }}-${{ matrix.arch }}
-          path: bundle/*.zip
 
   upload-release-assets:
     name: Upload release assets
