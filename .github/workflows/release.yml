@@ -204,27 +204,6 @@ jobs:
           name: bundle-${{ matrix.platform }}-${{ matrix.arch }}
           path: bundle/*.zip
 
-  publish-pypi:
-    name: Publish to PyPI
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/gcs-public-share
-    permissions:
-      id-token: write
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: python-packages
-          path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true
-
   upload-release-assets:
     name: Upload release assets
     needs: [build, create-platform-bundles]
